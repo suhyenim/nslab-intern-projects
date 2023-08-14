@@ -29,6 +29,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	int SERVER_PORT = atoi(argv[1]);
+
 	const char* server_name = "localhost"; // 127.0.0.1
 	struct sockaddr_in srv_addr; // Create socket structure
 	memset(&srv_addr, 0, sizeof(srv_addr)); // Initialize memory space with zeros
@@ -53,11 +54,11 @@ int main(int argc, char *argv[]) {
 
 	while(1){
 		if ( readline(0, SendBuffer, maxlen) > 0 ){
-			//sendto()
+			sendto(sock, &SendBuffer, sizeof(SendBuffer), 0, (struct sockaddr *)&srv_addr, sizeof(srv_addr));
 		}
 
-    //recvfrom()
-		
+    n = recvfrom(sock, &RecvBuffer, sizeof(RecvBuffer), 0, (struct sockaddr *)&cli_addr, &cli_addr_len);
+
 		if (n > 0) {
 			RecvBuffer[n] = '\0'; // Null
 			printf("%s", RecvBuffer);

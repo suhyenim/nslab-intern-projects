@@ -38,14 +38,15 @@ int main(int argc, char *argv[]) {
 	int  maxlen = 1024;
 	int n = 0;
 	char RecvBuffer[maxlen];
+  char SendBuffer[maxlen];
 
 	while (1) {
-		//recvfrom() 
+		n = recvfrom(sock, &RecvBuffer, sizeof(RecvBuffer), 0, (struct sockaddr *)&cli_addr, &cli_addr_len);
 		if (n > 0) {
 			RecvBuffer[n] = '\0'; // Null-terminate the received string
 			printf("%s", RecvBuffer);
 
-			//sendto()
+			sendto(sock, &RecvBuffer, sizeof(RecvBuffer), 0, (struct sockaddr *)&cli_addr, sizeof(cli_addr));
 		}
 	}
 	close(sock);
