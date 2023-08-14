@@ -27,10 +27,9 @@ int main(int argc, char *argv[]) {
 	}
 
 	if ((bind(sock, (struct sockaddr *)&srv_addr, sizeof(srv_addr))) < 0) {
-		printf("Could not bind socket\n");
+		printf("Could not bind socket\n") ;
 		exit(1);
 	}
-
 
 	struct sockaddr_in cli_addr;
   int cli_addr_len = sizeof(cli_addr);
@@ -40,13 +39,76 @@ int main(int argc, char *argv[]) {
 	char RecvBuffer[maxlen];
   char SendBuffer[maxlen];
 
-	while (1) {
+	while (1) {	
 		n = recvfrom(sock, &RecvBuffer, sizeof(RecvBuffer), 0, (struct sockaddr *)&cli_addr, &cli_addr_len);
-		if (n > 0) {
+		if (n > 0) {		
 			RecvBuffer[n] = '\0'; // Null-terminate the received string
-			printf("%s", RecvBuffer);
 
-			sendto(sock, &RecvBuffer, sizeof(RecvBuffer), 0, (struct sockaddr *)&cli_addr, sizeof(cli_addr));
+			//SendBuffer, GPBuffer, XBuffer, YBuffer 버퍼 초기화
+			memset(SendBuffer, 0, sizeof(SendBuffer));
+			memset(GPBuffer, 0, sizeof(GPBuffer));
+			memset(XBuffer, 0, sizeof(XBuffer));
+			memset(YBuffer, 0, sizeof(YBuffer));
+
+			//사용할 변수와 버퍼 선언
+			int blankX = 0;
+			int blankY = 0;
+			int startY = 0;
+			char GPBuffer[maxlen]; //"get "이나 "put " 담을 버퍼
+			char XBuffer[maxlen]; //x값 담을 버퍼
+			char YBuffer[maxlen]; //y값 담을 버퍼
+
+			//RecvBuffer에서 get, put, x, y 추출
+			for(int i = 0; i < 4; i++){ 
+				GPBuffer[i] = (char)RecvBuffer[i]; 
+			}	
+			for(int i = 4; i < n; i++){ 
+				if((char)RecvBuffer[i] == '\n'){
+					break;
+				}
+				if((char)RecvBuffer[i] == ' '){
+					blankX = -1;
+					startY = i + 1;
+					break;
+				}
+				XBuffer[i - 4] = (char)RecvBuffer[i];
+			}
+			if(blankX < 0){
+				for(int i = startY; i < n; i++){ 
+					if((char)RecvBuffer[i] == '\n'){
+						break;
+					}
+					if((char)RecvBuffer[i] == ' '){
+						blankY = -1;
+						break;
+					}
+					YBuffer[i - startY] = (char)RecvBuffer[i]; 
+				}
+			}
+
+			//"get x"인 경우
+			if(strcmp(GPBuffer, "get ") == 0 && blankX == 0){
+				strcat(SendBuffer, "the value for ");
+				strcat(SendBuffer, XBuffer);
+				strcat(SendBuffer, " is 0\n");
+				printf("%s", SendBuffer);
+				sendto(sock, &SendBuffer, sizeof(SendBuffer), 0, (struct sockaddr *)&cli_addr, sizeof(cli_addr));
+			}
+			//"put x y"인 경우
+			else if(strcmp(GPBuffer, "put ") == 0 && blankX < 0 && blankY == 0){
+				strcat(SendBuffer, "your put for ");
+				strcat(SendBuffer, XBuffer);
+				strcat(SendBuffer, "=");
+				strcat(SendBuffer, YBuffer);
+				strcat(SendBuffer, " is done!\n");
+				printf("%s", SendBuffer);
+				sendto(sock, &SendBuffer, sizeof(SendBuffer), 0, (struct sockaddr *)&cli_addr, sizeof(cli_addr));
+			}
+			//"get x", "put x y"를 제외한 경우
+      else{
+				memset(SendBuffer, 0, sizeof(SendBuffer));
+				sendto(sock, &SendBuffer, sizeof(SendBuffer), 0, (struct sockaddr *)&cli_addr, sizeof(cli_addr));
+			}
 		}
 	}
 	close(sock);
