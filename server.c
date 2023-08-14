@@ -9,6 +9,7 @@
 
 #define KEY_SIZE 16
 #define VALUE_SIZE 64
+#define MAX_KEY 100000
 
 #pragma pack(1) // padding 방지
 struct kvs_hdr{
@@ -19,48 +20,54 @@ struct kvs_hdr{
 } __attribute__((packed)); // padding 방지
 
 char* get(redisContext *c, int key) {
-    redisReply *reply;
-    char key_str[KEY_SIZE];
-    snprintf(key_str, KEY_SIZE, "%d", key);
-    reply = redisCommand(c, "GET %s", key_str);
-    if (reply->type == REDIS_REPLY_NIL) {
-        //printf("Error: Failed to retrieve value for key: %d\n", key);
-        return NULL;
-    } else {
-        return reply->str;
-    }
+	redisReply *reply;
+	char key_str[KEY_SIZE];
+	snprintf(key_str, KEY_SIZE, "%d", key);
+	reply = redisCommand(c, "GET %s", key_str);
+	if (reply->type == REDIS_REPLY_NIL) {
+		//printf("Error: Failed to retrieve value for key: %d\n", key);
+		return NULL;
+	} else {
+		return reply->str;
+	}
 }
 int put(redisContext *c, int key, char *value) {
-    redisReply *reply;
-    char key_str[KEY_SIZE];
-    snprintf(key_str, KEY_SIZE, "%d", key);
-    reply = redisCommand(c, "SET %s %s", key_str, value);
-    if (reply->type == REDIS_REPLY_ERROR) {
-        //printf("Error: Failed to store key-value pair: %s\n", reply->str);
-        freeReplyObject(reply);
-        return -1;
-    } else {
-        freeReplyObject(reply);
-        return 0;
-    }
+	redisReply *reply;
+	char key_str[KEY_SIZE];
+	snprintf(key_str, KEY_SIZE, "%d", key);
+	reply = redisCommand(c, "SET %s %s", key_str, value);
+	if (reply->type == REDIS_REPLY_ERROR) {
+		//printf("Error: Failed to store key-value pair: %s\n", reply->str);
+		freeReplyObject(reply);
+		return -1;
+	} else {
+		freeReplyObject(reply);
+		return 0;
+	}
 }
 
 int main(int argc, char *argv[]) {
-
-	// Connect to Redis server
+	//Redis 서버 연결
 	redisContext *redis_context = redisConnect("127.0.0.1", 6379);
 	if (redis_context->err) {
 		printf("Failed to connect to Redis: %s\n", redis_context->errstr);
 		return 1;
 	}
 
-	if ( argc < 2 ){
-	 printf("Input : %s port number\n", argv[0]);
+	//value값 채워 두기
+	char abcd[VALUE_SIZE] = ""; 
+	for (int i = 0; i < 16; ++i)
+		strcat(abcd, "ABCD");
+	for (int i = 0; i < MAX_KEY+1; i++)
+		put(redis_context, i, abcd);
+	printf("Setting is finished... Start the client program...\n");
+	
+	if ( argc != 1 ){
+	 printf("Usage: ./server\n");
 	 return 1;
 	}
 
-	int SERVER_PORT = atoi(argv[1]);
-
+	int SERVER_PORT = 5001;
 	struct sockaddr_in srv_addr;
 	memset(&srv_addr, 0, sizeof(srv_addr));
 	srv_addr.sin_family = AF_INET;
@@ -72,32 +79,27 @@ int main(int argc, char *argv[]) {
 		printf("Could not create listen socket\n");
 		exit(1);
 	}
-
 	if ((bind(sock, (struct sockaddr *)&srv_addr, sizeof(srv_addr))) < 0) {
 		printf("Could not bind socket\n") ;
 		exit(1);
 	}
-
 	struct sockaddr_in cli_addr;
   int cli_addr_len = sizeof(cli_addr);
-
-	int  maxlen = 1024;
 	int n = 0;
 
-	//구조체 선언
-	struct kvs_hdr my_hdr;
+	//헤더 구조체 선언
+	struct kvs_hdr my_hdr; 
 
-	while (1) {		
-		//구조체 초기화
+	while (1) {	
+		//헤더 구조체 초기화
 		memset(&my_hdr, 0, sizeof(struct kvs_hdr));
 		my_hdr.op = -1;
-
 
 		n = recvfrom(sock, &my_hdr, sizeof(struct kvs_hdr), 0, (struct sockaddr *)&cli_addr, &cli_addr_len);
 		if (n > 0) {		
 			if(my_hdr.op == 0){
 				my_hdr.op = 1; //OP_READ_REPLY
-				snprintf(my_hdr.value, VALUE_SIZE, "%.*s", VALUE_SIZE - 1, get(redis_context, atoi(my_hdr.key)));
+				snprintf(my_hdr.value, VALUE_SIZE, "%.*s", VALUE_SIZE - 1, get(redis_context, atoi(my_hdr.key)));				
 			}
 			else if(my_hdr.op == 2){
 				my_hdr.op = 3; //OP_WRITE_REPLY

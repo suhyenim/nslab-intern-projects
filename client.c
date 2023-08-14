@@ -8,6 +8,7 @@
 
 #define KEY_SIZE 16
 #define VALUE_SIZE 64
+#define MAX_KEY 100000
 
 #pragma pack(1) // padding 방지
 struct kvs_hdr{
@@ -24,29 +25,23 @@ uint64_t get_cur_ns() {
   return t;
 }
 
-int readline ( int fd, char *ptr, int maxlen ){
-   int n, rc;
-   char c;
-   for(n=1; n<maxlen; n++){
-      if ( (rc = read(fd, &c, 1)) == 1 ){
-         *ptr ++ = c;
-         if ( c == '\n' ) break;
-      } else if ( rc == 0 ){
-         if ( n == 1 ) return 0;
-         else break;
-      }
-   }
-   *ptr = 0;
-   return n;
+int compare(const void *a, const void *b) { 
+	if (*(int *)a < *(int *)b) 
+		return -1; 
+	if (*(int *)a > *(int *)b) 
+		return 1; 
+	return 0;
 }
 
 int main(int argc, char *argv[]) {
-	if ( argc < 2 ){
-	 printf("Input : %s port number\n", argv[0]);
-	 return 1;
+	if (argc != 3){
+		printf("Usage: ./client WRatio N\n");
+	  return 1;
 	}
+	int wratio_req = atoi(argv[1]);
+	int total_req = atoi(argv[2]);
 
-	int SERVER_PORT = atoi(argv[1]);
+	int SERVER_PORT = 5001;
 	const char* server_name = "localhost"; // 127.0.0.1
 	struct sockaddr_in srv_addr; // Create socket structure
 	memset(&srv_addr, 0, sizeof(srv_addr)); // Initialize memory space with zeros
@@ -59,67 +54,65 @@ int main(int argc, char *argv[]) {
 		printf("Could not create socket\n");
 		exit(1);
 	}
-
   struct sockaddr_in cli_addr;
   int cli_addr_len = sizeof(cli_addr);
-
 	int n = 0;
-	int maxlen = 1024;
-  char SendBuffer[maxlen];
 
-	struct kvs_hdr my_hdr; //헤더 구조체 선언
+	//헤더 구조체 선언
+	struct kvs_hdr my_hdr;
 
-	while(1){
-		memset(SendBuffer, 0, sizeof(SendBuffer)); //버퍼 초기화
-		memset(&my_hdr, 0, sizeof(struct kvs_hdr)); //헤더 구조체 초기화
+	//각 테스트의 latency를 담을 배열 선언
+	uint64_t latcy[total_req]; 
+
+	for (int i = 0; i < total_req; i++){ //전체 요청 개수만큼 반복
+		//헤더 구조체 초기화
+		memset(&my_hdr, 0, sizeof(struct kvs_hdr)); 
 		my_hdr.op = -1;
 
-		if (readline(0, SendBuffer, maxlen) > 0 ){
-			//개행문자를 널문자로 변경
-			char *end = strchr(SendBuffer, '\n');
-    	if (end != NULL) 
-        *end = '\0';
-			
-			//띄어쓰기 처리 
-			int count_space = 0;
-			for (int i = 0; i < (int)strlen(SendBuffer); i++) {
-				if (SendBuffer[i] == ' '){
-					if (SendBuffer[i+1] == '\0' || SendBuffer[i+1] == ' '){
-						count_space = -1;
-						break;
-					}
-					count_space++;
-				}	
-			}
-
-      //클라이언트에서 서버로 전송
-			if(strncmp(SendBuffer, "get", 3) == 0 && count_space == 1){
-				my_hdr.op = 0; //OP_READ
-				sscanf(SendBuffer + 4, "%s", my_hdr.key);
-			}
-			else if(strncmp(SendBuffer, "put", 3) == 0 && count_space == 2){
-				my_hdr.op = 2; //OP_WRITE
-				sscanf(SendBuffer + 4, "%s %s", my_hdr.key, my_hdr.value);
-			}			
-			my_hdr.latency = get_cur_ns();
-			sendto(sock, &my_hdr, sizeof(struct kvs_hdr), 0, (struct sockaddr *)&srv_addr, sizeof(srv_addr));
-			
-			//서버에서 받아온 값 출력
-			n = recvfrom(sock, &my_hdr, sizeof(struct kvs_hdr), 0, NULL, NULL);
-			if (n > 0) {
-				if(my_hdr.op == 1){ //OP_READ_REPLY 
-					printf("The key %s has value %s\n", my_hdr.key, my_hdr.value);
-				}
-				else if(my_hdr.op == 3){ //OP_WRITE_REPLY
-					printf("your write for %s is done\n", my_hdr.key);
-				}
-			}
-			my_hdr.latency = get_cur_ns() - my_hdr.latency;
-      printf("Latency: %lu microseconds\n", my_hdr.latency / 1000);
+		//클라이언트에서 서버로 메시지 전송
+		int isWrite = (rand() % 100) < wratio_req;
+		int rdm_key = rand() % (MAX_KEY + 1);
+		
+		if(!isWrite){
+			my_hdr.op = 0; //OP_READ
+			sprintf(my_hdr.key, "%d", rdm_key);
 		}
+		else {
+			my_hdr.op = 2; //OP_WRITE
+			sprintf(my_hdr.key, "%d", rdm_key);
+			strcpy(my_hdr.value, "DCBADCBADBCA\0");
+		}		
+		my_hdr.latency = get_cur_ns();
+		sendto(sock, &my_hdr, sizeof(struct kvs_hdr), 0, (struct sockaddr *)&srv_addr, sizeof(srv_addr));
+	
+		//서버로부터 메시지 수신
+		n = recvfrom(sock, &my_hdr, 
+			sizeof(struct kvs_hdr), 0, NULL, NULL);
+		if (n > 0) {
+			if(my_hdr.op == 1){ //OP_READ_REPLY 
+				// printf("The key %s has value %s\n", my_hdr.key, my_hdr.value);
+			}
+			else if(my_hdr.op == 3){ //OP_WRITE_REPLY
+				// printf("your write for %s is done\n", my_hdr.key);
+			}
+		}
+		my_hdr.latency = get_cur_ns() - my_hdr.latency;
+		latcy[i] = my_hdr.latency / 1000; 
 	}
 
+	//평균 latency 구하기
+	uint64_t latcy_sum = 0;
+	for(int i = 0; i < total_req; i++)
+		latcy_sum += latcy[i];
+	printf("Average Latency: %lu microseconds\n", 
+		latcy_sum / total_req);
+	
+	//99% 꼬리 latency 구하기
+	int tail_idx = total_req * 0.99;
+	qsort(latcy, total_req, sizeof(uint64_t), compare);
+	printf("99per tail Latency: %lu microseconds\n", 
+		latcy[tail_idx]);
+	
 	close(sock);
-
 	return 0;
 }
