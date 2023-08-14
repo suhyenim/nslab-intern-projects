@@ -65,32 +65,24 @@ int main(int argc, char *argv[]) {
 
 	int n = 0;
 	int maxlen = 1024;
-	char RecvBuffer[maxlen];
   char SendBuffer[maxlen];
 
-	//구조체 선언
-	struct kvs_hdr my_hdr;
+	struct kvs_hdr my_hdr; //헤더 구조체 선언
 
 	while(1){
-		//버퍼 초기화
-		memset(SendBuffer, 0, sizeof(SendBuffer));
-
-		//구조체 초기화
-		memset(&my_hdr, 0, sizeof(struct kvs_hdr));
+		memset(SendBuffer, 0, sizeof(SendBuffer)); //버퍼 초기화
+		memset(&my_hdr, 0, sizeof(struct kvs_hdr)); //헤더 구조체 초기화
 		my_hdr.op = -1;
 
 		if (readline(0, SendBuffer, maxlen) > 0 ){
+			//개행문자를 널문자로 변경
+			char *end = strchr(SendBuffer, '\n');
+    	if (end != NULL) 
+        *end = '\0';
 			
-			//마지막 문자를 개행문자에서 널문자로 변경
-			int len = (int)strlen(SendBuffer); //버퍼 안 문자열의 길이
-			if (SendBuffer[len-1]== '\n')
-				SendBuffer[len-1]='\0'; 
-			if (strlen(SendBuffer) == 0)
-				break;
-
 			//띄어쓰기 처리 
 			int count_space = 0;
-			for (int i = 0; i < len; i++) {
+			for (int i = 0; i < (int)strlen(SendBuffer); i++) {
 				if (SendBuffer[i] == ' '){
 					if (SendBuffer[i+1] == '\0' || SendBuffer[i+1] == ' '){
 						count_space = -1;
@@ -101,15 +93,14 @@ int main(int argc, char *argv[]) {
 			}
 
       //클라이언트에서 서버로 전송
-			if(strncmp(SendBuffer, "get ", 4) == 0 && count_space == 1){
+			if(strncmp(SendBuffer, "get", 3) == 0 && count_space == 1){
 				my_hdr.op = 0; //OP_READ
-				strcpy(my_hdr.key, SendBuffer + 4);
+				sscanf(SendBuffer + 4, "%s", my_hdr.key);
 			}
-			else if(strncmp(SendBuffer, "put ", 4) == 0 && count_space == 2){
+			else if(strncmp(SendBuffer, "put", 3) == 0 && count_space == 2){
 				my_hdr.op = 2; //OP_WRITE
-				strcpy(my_hdr.key, strtok(SendBuffer + 4, " "));
-				strcpy(my_hdr.value, strtok(NULL, " "));
-			}						
+				sscanf(SendBuffer + 4, "%s %s", my_hdr.key, my_hdr.value);
+			}			
 			my_hdr.latency = get_cur_ns();
 			sendto(sock, &my_hdr, sizeof(struct kvs_hdr), 0, (struct sockaddr *)&srv_addr, sizeof(srv_addr));
 			

@@ -1,16 +1,7 @@
-all: client.out server.out
+all: client server
 
-client.out : client.o
-	gcc -o client.out client.o
+server: server.o
+	$(CC) -o server server.o -D_GNU_SOURCE -lhiredis
 
-client.o : client.c
-	gcc -c -o client.o client.c
-
-server.out : server.o
-	gcc -o server.out server.o
-
-server.o : server.c
-	gcc -c -o server.o server.c
-
-clean:
-	rm *.o client.out server.out
+server.o: server.c
+	$(CC) -c server.c
